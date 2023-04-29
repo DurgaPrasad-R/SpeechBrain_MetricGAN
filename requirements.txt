@@ -1,0 +1,4 @@
+speechbrain
+scipy
+pydub
+torchaudio
