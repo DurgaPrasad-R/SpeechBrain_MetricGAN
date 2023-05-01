@@ -16,15 +16,17 @@ def allowed_file(filename):
 
 def process_file(file):
     noisy, rate = torchaudio.load(file)
-    try:
-        assert rate == 16000, "sampling rate must be 16000"
-    except AssertionError as e:
-        return None, None, None, str(e)
-    # Remove extra dimension from input signal
+    if rate != 16000:
+        # Resample audio to 16KHz
+        resampler = torchaudio.transforms.Resample(orig_freq=rate, new_freq=16000)
+        noisy = resampler(noisy)
+    assert noisy.shape[0] == 1, "input audio should have 1 channel"
     noisy = noisy.squeeze(0)
+    # Convert the bit depth to 16 bits
+    noisy = torchaudio.transforms.BitDepth(16)(noisy)
     # Add fake batch dimension and relative length tensor
     enhanced = enhance_model.enhance_batch(noisy.unsqueeze(0), lengths=torch.tensor([1.]))
-    return noisy.numpy(), enhanced[0].cpu().numpy(), rate, None
+    return noisy.numpy(), enhanced[0].cpu().numpy(), rate
 
 def main():
     st.set_page_config(page_title="Speech Enhancement | MetricGan+", page_icon="🔊", layout="wide")
@@ -36,14 +38,11 @@ def main():
     if uploaded_file is not None:
         if allowed_file(uploaded_file.name):
             with st.spinner("Processing..."):
-                speech, enhanced, sr, error = process_file(uploaded_file)
-            if error is not None:
-                st.error(error)
-            else:
-                st.text("Original audio")
-                st.audio(speech, format='audio/wav', start_time=0, sample_rate=sr)
-                st.text("Enhanced audio")
-                st.audio(enhanced, format='audio/wav', start_time=0, sample_rate=sr)
+                speech, enhanced, sr = process_file(uploaded_file)
+            st.text("Original audio")
+            st.audio(speech, format='audio/wav', start_time=0, sample_rate=sr)
+            st.text("Enhanced audio")
+            st.audio(enhanced, format='audio/wav', start_time=0, sample_rate=sr)
         else:
             st.warning("Invalid file type. Please upload a WAV file.")
 
